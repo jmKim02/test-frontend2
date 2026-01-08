@@ -1,4 +1,4 @@
-name: Frontend CI
+name: Frontend CI 1
 
 on: 
   pull_request:
