@@ -57,5 +57,5 @@ jobs:
             .next/standalone
             .next/static
             public
-          retention-days: 90
+          retention-days: 14
           compression-level: 6
