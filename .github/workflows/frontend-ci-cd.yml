@@ -149,6 +149,9 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  
+
             FRONTEND_DIR="/home/system9902/frontend"
             RELEASE_DIR="$FRONTEND_DIR/release"
             NEW_TAR="$RELEASE_DIR/frontend-${{ env.DEPLOY_TIMESTAMP }}.tar.gz"
