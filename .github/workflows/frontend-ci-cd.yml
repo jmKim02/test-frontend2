@@ -64,6 +64,8 @@ jobs:
       - name: Bundle Artifacts
         working-directory: apps/web
         run: |
+          mkdir -p .next/standalone/.next
+
           # static 복사 (디렉토리 자동 생성)
           cp -r .next/static .next/standalone/.next/
           
