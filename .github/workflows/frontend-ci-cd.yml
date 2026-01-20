@@ -1,49 +1,46 @@
 name: Frontend CI-CD
 
 on: 
-  pull_request:
-    types: [opened, synchronize]
-    branches: [develop, main]
-    paths:  # ← 반드시 추가!
+  push:
+  #pull_request:
+    #types: [opened, synchronize]
+    branches: [dev, main]
+    paths:
       - 'apps/web/**'
       - 'packages/**'
       - 'pnpm-lock.yaml'
       - 'turbo.json'
 
 jobs:
-  ci: # PR 대상: Full CI (Lint → Build → Test → Artifact)
+  ci:
     runs-on: ubuntu-latest
     steps:
-      # 1. 코드 체크아웃
+      # Phase 1: Environment Setup
       - name: Checkout Code
         uses: actions/checkout@v4
       
-      # 2. pnpm 설치
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10.28.0
       
-      # 3. Node.js 환경 설정 (pnpm 캐싱 포함)
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: '24.13.0'
           cache: 'pnpm'
       
-      # 4. 의존성 설치
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Restore Turbo cache
         uses: actions/cache@v4
         with:
-          path: .turbo/cache
-          key: ${{ runner.os }}-turbo-${{ hashFiles('pnpm-lock.yaml', 'turbo.json', '**/package.json') }}
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-turbo-
 
-      # 5. Next.js 빌드 캐시 복원
       - name: Restore Next.js build cache
         uses: actions/cache@v4
         with:
@@ -53,35 +50,29 @@ jobs:
             ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
             ${{ runner.os }}-nextjs-
 
+      # Phase 2: Build & Test
       - name: Build Next.js application
         run: pnpm turbo build --filter=web
 
-      # Turborepo로 web 앱만 테스트
       - name: Run unit tests
         run: pnpm turbo test --filter=web -- --passWithNoTests
-        continue-on-error: true  # 테스트 없어도 계속 진행
+        continue-on-error: true
 
-      # Phase 1: Lint -> PR때 프론트측에서 가능할 것 같다.
-      # - name: Run ESLint
-      #  run: pnpm lint -- --max-warnings 50
-      
-      # Phase 4: Artifact Preparation
+      # Phase 3: Artifact Preparation
       - name: Bundle Artifacts
         working-directory: apps/web
         run: |
-          mkdir -p .next/standalone/.next
-
-          # static 복사
+          # static 복사 (디렉토리 자동 생성)
           cp -r .next/static .next/standalone/.next/
           
           # public 복사
           cp -r public .next/standalone/
           
-          # 압축 (루트로 생성)
+          # 압축
           cd .next/standalone
           tar -czf ../../../frontend.tar.gz .
       
-      # Phase 5: Artifact Upload
+      # Phase 4: Artifact Upload
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -89,3 +80,4 @@ jobs:
           path: frontend.tar.gz
           retention-days: 14
           compression-level: 0
+
