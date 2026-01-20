@@ -8,6 +8,7 @@ on:
     paths:
       - 'apps/web/**'
       - 'packages/**'
+      - 'package.json'
       - 'pnpm-lock.yaml'
       - 'turbo.json'
       - '.github/workflows/frontend-ci-cd.yml'
