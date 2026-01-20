@@ -10,7 +10,7 @@ on:
       - 'packages/**'
       - 'pnpm-lock.yaml'
       - 'turbo.json'
-      - '.github/workflows/frontend-ci.yml'
+      - '.github/workflows/frontend-ci-cd.yml'
 
 jobs:
   ci:
