@@ -61,31 +61,22 @@ jobs:
           # 모노레포 중첩 구조 찾기
           if [ -d "$STANDALONE_ROOT/1-team-one-fe/apps/web" ]; then
             APP_DIR="$STANDALONE_ROOT/1-team-one-fe/apps/web"
-            echo "Found monorepo structure at: $APP_DIR"
           elif [ -d "$STANDALONE_ROOT/apps/web" ]; then
             APP_DIR="$STANDALONE_ROOT/apps/web"
-            echo "Found apps/web structure at: $APP_DIR"
           else
             echo "ERROR: Cannot find standalone app directory"
-            echo "Checking standalone contents:"
             ls -la $STANDALONE_ROOT
             exit 1
           fi
           
-          # static과 public 복사
-          echo "Copying static assets..."
           mkdir -p $APP_DIR/.next
           cp -r .next/static $APP_DIR/.next/
           cp -r public $APP_DIR/
-          
-          # 전체 standalone 압축 (중첩 구조 포함)
-          echo "Creating archive..."
+
           cd $STANDALONE_ROOT
-          tar -czf ../../../frontend.tar.gz .
-          cd ../../..
-          
-          echo "✅ Archive created:"
-          ls -lh frontend.tar.gz
+          tar -czf $GITHUB_WORKSPACE/frontend.tar.gz .
+    
+          ls -lh $GITHUB_WORKSPACE/frontend.tar.gz
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
