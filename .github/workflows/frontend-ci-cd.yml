@@ -14,11 +14,9 @@ on:
 
 jobs:
   ci:
-    # closed는 제외 (병합 시에는 CD만 실행)
     if: github.event.action == 'opened' || github.event.action == 'synchronize'
     runs-on: ubuntu-latest
     steps:
-      # Phase 1: Environment Setup
       - name: Checkout Code
         uses: actions/checkout@v4
       
@@ -51,27 +49,44 @@ jobs:
             ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
             ${{ runner.os }}-nextjs-
 
-      - name: Clear Turbo cache (temporary)
-        run: rm -rf .turbo
-      # Phase 2: Build & Test
       - name: Build Next.js application
         run: pnpm turbo build --filter=web
 
-      #- name: Run unit tests
-      #  run: pnpm turbo test --filter=web -- --passWithNoTests
-      #  continue-on-error: true
-
-      # Phase 3: Artifact Preparation
+      # Phase 3: Artifact Preparation (모노레포 경로 처리)
       - name: Bundle Artifacts
         working-directory: apps/web
         run: |
-          mkdir -p .next/standalone/.next
-          cp -r .next/static .next/standalone/.next/
-          cp -r public .next/standalone/
-          cd .next/standalone
+          STANDALONE_ROOT=".next/standalone"
+          
+          # 모노레포 중첩 구조 찾기
+          if [ -d "$STANDALONE_ROOT/1-team-one-fe/apps/web" ]; then
+            APP_DIR="$STANDALONE_ROOT/1-team-one-fe/apps/web"
+            echo "Found monorepo structure at: $APP_DIR"
+          elif [ -d "$STANDALONE_ROOT/apps/web" ]; then
+            APP_DIR="$STANDALONE_ROOT/apps/web"
+            echo "Found apps/web structure at: $APP_DIR"
+          else
+            echo "ERROR: Cannot find standalone app directory"
+            echo "Checking standalone contents:"
+            ls -la $STANDALONE_ROOT
+            exit 1
+          fi
+          
+          # static과 public 복사
+          echo "Copying static assets..."
+          mkdir -p $APP_DIR/.next
+          cp -r .next/static $APP_DIR/.next/
+          cp -r public $APP_DIR/
+          
+          # 전체 standalone 압축 (중첩 구조 포함)
+          echo "Creating archive..."
+          cd $STANDALONE_ROOT
           tar -czf ../../../frontend.tar.gz .
+          cd ../../..
+          
+          echo "✅ Archive created:"
+          ls -lh frontend.tar.gz
       
-      # Phase 4: Artifact Upload
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -80,7 +95,6 @@ jobs:
           retention-days: 14
           compression-level: 0
 
-      # Discord 알림 - CI 결과
       - name: Notify Discord - CI Result
         if: always()
         env:
@@ -96,13 +110,11 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      # 1. 코드 체크아웃 (태깅용)
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. Artifact Download
       - name: Download build artifact
         uses: dawidd6/action-download-artifact@v6
         with:
@@ -114,7 +126,6 @@ jobs:
           name: "frontend-.*"
           path: ./artifacts
 
-      # 3. 타임스탬프로 파일명 변경
       - name: Prepare artifact with timestamp
         run: |
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
@@ -126,7 +137,6 @@ jobs:
           echo "TAR_FILENAME=frontend-${TIMESTAMP}.tar.gz" >> $GITHUB_ENV
           echo "DEPLOY_TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
 
-      # 4. release/ 디렉토리로 tar.gz 전송
       - name: Transfer artifact to Server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -138,7 +148,7 @@ jobs:
           target: "~/frontend/release/"
           strip_components: 0
 
-      # 5. 배포 실행 (압축 해제 + PM2 재시작)
+      # 5. 배포 실행 (모노레포 경로 처리)
       - name: Deploy via SSH
         id: deploy
         uses: appleboy/ssh-action@v1.0.0
@@ -165,11 +175,21 @@ jobs:
             mkdir -p $APP_DIR
             tar -xzf $NEW_TAR -C $APP_DIR
             
-            echo "4. 디렉토리 확인"
-            ls -lh $APP_DIR
+            echo "4. 모노레포 구조 찾기"
+            if [ -d "$APP_DIR/1-team-one-fe/apps/web" ]; then
+              ACTUAL_APP_DIR="$APP_DIR/1-team-one-fe/apps/web"
+            elif [ -d "$APP_DIR/apps/web" ]; then
+              ACTUAL_APP_DIR="$APP_DIR/apps/web"
+            else
+              echo "ERROR: Cannot find app directory"
+              ls -la $APP_DIR
+              exit 1
+            fi
+            
+            echo "Found app at: $ACTUAL_APP_DIR"
             
             echo "5. PM2로 애플리케이션 시작"
-            cd $APP_DIR
+            cd $ACTUAL_APP_DIR
             pm2 start server.js --name frontend --time || pm2 restart frontend
             
             echo "6. PM2 상태 확인"
@@ -178,7 +198,6 @@ jobs:
             echo "7. 프로세스 시작 대기"
             sleep 10
 
-      # 6. Health Check
       - name: Health Check
         id: healthcheck
         uses: appleboy/ssh-action@v1.0.0
@@ -208,7 +227,6 @@ jobs:
             pm2 logs frontend --lines 30 --nostream
             exit 1
 
-      # 8. 시맨틱 버전 태그 생성
       - name: Create Semantic Version Tag
         if: |
           steps.healthcheck.outcome == 'success' && 
@@ -243,7 +261,6 @@ jobs:
           git push origin $NEW_VERSION
           echo "DEPLOY_TAG=$NEW_VERSION" >> $GITHUB_ENV
 
-      # 9. 오래된 release 파일 정리
       - name: Cleanup Old Releases
         if: steps.healthcheck.outcome == 'success'
         uses: appleboy/ssh-action@v1.0.0
@@ -258,8 +275,7 @@ jobs:
             echo "Cleanup old releases"
             cd $RELEASE_DIR
             
-            # 최근 5개만 유지
-            OLD_TARS=$(ls -t frontend-*.tar.gz | tail -n +6)
+            OLD_TARS=$(ls -t frontend-*.tar.gz 2>/dev/null | tail -n +6)
             
             if [ -n "$OLD_TARS" ]; then
               echo "Removing old releases:"
@@ -268,17 +284,15 @@ jobs:
               echo "No old releases to clean up"
             fi
             
-            # 오래된 백업 정리 (7일 이상)
             find /home/system9902/frontend/app_backup_* -mtime +7 -exec rm -rf {} \; 2>/dev/null || true
 
-      # Discord 알림 - CD 결과
       - name: Notify Discord - CD Result
         if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           MENTION_USER: ${{ secrets.DISCORD_MENTION_USER_ID }}
         run: |
-          STATUS="${{ job.status }}"  # job.status로 변경
+          STATUS="${{ job.status }}"
           TAG="${{ env.DEPLOY_TAG }}"
           curl -s -X POST -H "Content-Type: application/json" \
             -d "{\"content\":\"<@${MENTION_USER}> Frontend CD **${STATUS}** | Tag: ${TAG} | \`${GITHUB_SHA:0:7}\`\"}" \
