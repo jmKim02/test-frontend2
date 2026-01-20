@@ -1,0 +1,83 @@
+name: Frontend CI-CD
+
+on: 
+  push:
+  #pull_request:
+    #types: [opened, synchronize]
+    branches: [dev, main]
+    paths:
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      # Phase 1: Environment Setup
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.13.0'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: apps/web/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**/*.{js,ts,jsx,tsx}', 'packages/**/*.{js,ts,jsx,tsx}') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-nextjs-
+
+      # Phase 2: Build & Test
+      - name: Build Next.js application
+        run: pnpm turbo build --filter=web
+
+      - name: Run unit tests
+        run: pnpm turbo test --filter=web -- --passWithNoTests
+        continue-on-error: true
+
+      # Phase 3: Artifact Preparation
+      - name: Bundle Artifacts
+        working-directory: apps/web
+        run: |
+          # static 복사 (디렉토리 자동 생성)
+          cp -r .next/static .next/standalone/.next/
+          
+          # public 복사
+          cp -r public .next/standalone/
+          
+          # 압축
+          cd .next/standalone
+          tar -czf ../../../frontend.tar.gz .
+      
+      # Phase 4: Artifact Upload
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-${{ github.sha }}
+          path: frontend.tar.gz
+          retention-days: 14
+          compression-level: 0
+
