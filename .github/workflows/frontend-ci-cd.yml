@@ -51,6 +51,8 @@ jobs:
             ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
             ${{ runner.os }}-nextjs-
 
+      - name: Clear Turbo cache (temporary)
+        run: rm -rf .turbo
       # Phase 2: Build & Test
       - name: Build Next.js application
         run: pnpm turbo build --filter=web
