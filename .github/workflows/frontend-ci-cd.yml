@@ -4,12 +4,13 @@ on:
   push:
   #pull_request:
     #types: [opened, synchronize]
-    branches: [dev, main]
+    branches: [develop, main]
     paths:
       - 'apps/web/**'
       - 'packages/**'
       - 'pnpm-lock.yaml'
       - 'turbo.json'
+      - '.github/workflows/frontend-ci.yml'
 
 jobs:
   ci:
