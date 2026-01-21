@@ -5,12 +5,26 @@ on:
     types: [opened, synchronize, closed]
     branches: [develop, main]
     paths:
+      # 핵심 애플리케이션 코드
       - 'apps/web/**'
       - 'packages/**'
+      
+      # 의존성 관리
       - 'package.json'
       - 'pnpm-lock.yaml'
-      - 'turbo.json'
+      - 'pnpm-workspace.yaml'  
+      
+      # 빌드 설정
+      - 'turbo.json'     
+      - 'tooling/**'
+      - 'eslint.config.mjs'
+      
+      # 패키지 관리자 설정
+      - '.npmrc'                
+ 
+      # CI/CD 워크플로우
       - '.github/workflows/frontend-ci-cd.yml'
+
 
 jobs:
   ci: # PR 대상: Full CI (Build → Test → Artifact)
